@@ -1,11 +1,10 @@
-<img width="668" height="450" alt="image" src="https://github.com/user-attachments/assets/329d0eac-6a41-4fb5-8104-fda401c3d2a1" />
-
-
 # Pneumatic Cuff Sequencer
 
 A Python-based desktop application for configuring and executing pneumatic cuff inflation protocols via serial communication with a microcontroller.
 
 The application provides an intuitive graphical user interface for controlling pneumatic cuff experiments, monitoring pressure in real time, logging measurement data, and automatically generating plots after each experiment.
+
+<img width="668" height="450" alt="image" src="https://github.com/user-attachments/assets/329d0eac-6a41-4fb5-8104-fda401c3d2a1" />
 
 ---
 
@@ -37,35 +36,79 @@ The application provides an intuitive graphical user interface for controlling p
 Required packages:
 
 ```bash
-pip install pyserial matplotlib pillow
+pyserial
+matplotlib
+pillow
 ```
 
 ---
 
-## Installation
+# Setup
 
-Clone the repository:
+## 1. Clone the Repository
 
 ```bash
 git clone https://github.com/malga6en/Cuff_Sequencer.git
-cd Cuff_Sequencer
+
+or
+
+download Zip
 ```
 
-Install dependencies:
+---
+
+## 2. Create a Python Virtual Environment
+
+I use VS Code as Coding Environment...
+
+### Windows - Terminal
+
+```bash
+python -m venv .venv
+```
+
+Activate the virtual environment:
+
+```bash
+.venv\Scripts\activate
+```
+
+### Linux / macOS - Terminal
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+```
+
+After activation you should see something similar to:
+
+```text
+(.venv)
+```
+
+at the beginning of your terminal.
+
+---
+
+## 3. Install Dependencies
+
+Install all required packages:
 
 ```bash
 pip install -r requirements.txt
 ```
 
-or
+Verify the installation:
 
 ```bash
-pip install pyserial matplotlib pillow
+pip list
 ```
 
 ---
 
-## Running the Application
+## 4. Run the Application
+
+Start the GUI:
 
 ```bash
 python cuff_app.py
@@ -73,7 +116,7 @@ python cuff_app.py
 
 ---
 
-## Creating an Executable
+# Building an Executable (Windows)
 
 Install PyInstaller:
 
@@ -81,15 +124,81 @@ Install PyInstaller:
 pip install pyinstaller
 ```
 
-Build:
+Build a standalone executable:
 
 ```bash
-pyinstaller --onefile --noconsole ^
---add-data "FHWN.png;." ^
---add-data "Sport.jpeg;." ^
---add-data "Technik.jpeg;." ^
-cuff_app.py
+pyinstaller --onefile --noconsole --icon=Sport.jpeg --add-data "FHWN.png;." --add-data "Sport.jpeg;." --add-data "Technik.jpeg;." cuff_app.py
 ```
+
+The executable will be created in:
+
+```text
+dist/
+└── cuff_app.exe
+```
+
+---
+
+# Updating the Requirements File
+
+If additional Python packages are installed, update the requirements file:
+
+```bash
+pip freeze > requirements.txt
+```
+
+---
+
+# Project Structure
+
+```text
+Pneumatic-Cuff-Sequencer/
+│
+├── cuff_app.py
+├── requirements.txt
+├── README.md
+├── LICENSE
+│
+├── FHWN.png
+├── Sport.jpeg
+├── Technik.jpeg
+│
+├── build/
+├── dist/
+└── .venv/
+```
+
+---
+
+## Pressure Units
+
+The GUI supports two display units:
+
+- bar
+- mmHg
+
+Switching between units only affects the graphical interface.
+
+Internally, all communication with the microcontroller continues to use **bar**, therefore **no firmware changes are required**.
+
+---
+
+## Data Logging
+
+For every completed experiment the software automatically creates:
+
+- CSV file containing all recorded measurements
+- PNG plot of the pressure profile
+
+CSV columns:
+
+- Date
+- Time
+- Protocol
+- Time [ms]
+- Phase
+- ADC value
+- Pressure [bar]
 
 ---
 
@@ -120,62 +229,6 @@ Example:
 ```
 DATA,1250,INFLATE,2354,0.182
 ```
-
----
-
-## Data Logging
-
-For every completed experiment the software automatically creates:
-
-- CSV file containing all recorded measurements
-- PNG plot of the pressure profile
-
-CSV columns:
-
-- Date
-- Time
-- Protocol
-- Time [ms]
-- Phase
-- ADC value
-- Pressure [bar]
-
----
-
-## Pressure Units
-
-The GUI supports two display units:
-
-- bar
-- mmHg
-
-Switching between units only affects the graphical interface.
-
-Internally, all communication with the microcontroller continues to use **bar**, therefore **no firmware changes are required**.
-
----
-
-## Project Structure
-
-```
-.
-├── cuff_app.py
-├── FHWN.png
-├── Sport.jpeg
-├── Technik.jpeg
-├── README.md
-└── LICENSE
-```
-
----
-
-## Dependencies
-
-- Python
-- Tkinter
-- PySerial
-- Matplotlib
-- Pillow
 
 ---
 
