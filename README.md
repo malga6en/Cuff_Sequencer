@@ -1,3 +1,6 @@
+<img width="668" height="450" alt="image" src="https://github.com/user-attachments/assets/329d0eac-6a41-4fb5-8104-fda401c3d2a1" />
+
+
 # Pneumatic Cuff Sequencer
 
 A Python-based desktop application for configuring and executing pneumatic cuff inflation protocols via serial communication with a microcontroller.
@@ -23,7 +26,7 @@ The application provides an intuitive graphical user interface for controlling p
 
 ## Screenshots
 
-*(Add screenshots here)*
+<img width="1000" height="750" alt="image" src="https://github.com/user-attachments/assets/46cb88dc-c48b-4d7d-bc69-db7db09bceb8" />
 
 ---
 
@@ -44,8 +47,8 @@ pip install pyserial matplotlib pillow
 Clone the repository:
 
 ```bash
-git clone https://github.com/<username>/Pneumatic-Cuff-Sequencer.git
-cd Pneumatic-Cuff-Sequencer
+git clone https://github.com/malga6en/Cuff_Sequencer.git
+cd Cuff_Sequencer
 ```
 
 Install dependencies:
@@ -190,4 +193,4 @@ See the LICENSE file for details.
 
 University of Applied Sciences Wiener Neustadt (FHWN)
 
-Department of Robotics and Mechatronics
+Department of Robotics and AI
