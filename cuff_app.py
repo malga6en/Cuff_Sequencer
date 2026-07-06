@@ -204,6 +204,15 @@ class CuffApp:
         self.pressure_var = tk.StringVar(value="0.000 bar")
         self.pressure_entry = ttk.Entry(main, textvariable=self.pressure_var, width=14, state="readonly")
         self.pressure_entry.grid(column=3, row=3, sticky="e")
+        ## Zeit
+        self.target_time_var = tk.StringVar(value="--")
+
+        time_frame = ttk.Frame(main)
+        time_frame.grid(column=4, row=3, sticky="w", padx=(10, 0))
+
+        ttk.Label(time_frame, text="Target time:", style="Bold.TLabel").pack(side="left", padx=(0, 6))
+        ttk.Entry(time_frame, textvariable=self.target_time_var, width=10, state="readonly").pack(side="left")
+        ttk.Label(time_frame, text="[s]").pack(side="left", padx=(4, 0))
 
         # Log rechts neben den Pattern-Blöcken
         self.log = tk.Text(main, height=12, width=40)
@@ -424,6 +433,8 @@ class CuffApp:
         self.last_pressure_bar = 0.0
         self.update_pressure_display()
 
+        self.target_time_var.set("--")
+
         self.live_line.set_data([], [])
         self.live_ax.relim()
         self.live_ax.autoscale_view()
@@ -450,6 +461,7 @@ class CuffApp:
 
         self.last_pressure_bar = 0.0
         self.update_pressure_display()
+        self.target_time_var.set("--")
         self.status_var.set("STOPPING...")
 
     # ------------------------------------------------------------
@@ -482,9 +494,62 @@ class CuffApp:
 
                 finished = False
 
+                # --- Target-time measurement state ---
+                target_bar = p["inflate_bar"]
+                inflate_start_time = None
+                target_reached = False
+                last_phase = None
+
                 while not self.stop_event.is_set():
                     lines = self.read_serial_lines()
+
                     for line in lines:
+                        # --------------------------------------------------
+                        # Phase messages from Arduino
+                        # --------------------------------------------------
+                        if line.startswith("PHASE INFLATE"):
+                            inflate_start_time = time.perf_counter()
+                            target_reached = False
+                            last_phase = "INFLATE"
+                            self.msg_queue.put(("target_time", "--"))
+                            self.msg_queue.put(("log", f"<< {line}"))
+                            continue
+
+                        if line.startswith("PHASE DEFLATE"):
+                            inflate_start_time = None
+                            target_reached = False
+                            last_phase = "DEFLATE"
+                            self.msg_queue.put(("target_time", "--"))
+                            self.msg_queue.put(("log", f"<< {line}"))
+                            continue
+
+                        # --------------------------------------------------
+                        # End / error messages
+                        # --------------------------------------------------
+                        if (
+                            line == "DONE"
+                            or line == "STOPPED"
+                            or line.startswith("ERR")
+                        ):
+                            self.msg_queue.put(("log", f"<< {line}"))
+
+                            if line == "DONE":
+                                finished = True
+                                result = "DONE"
+                                break
+                            elif line == "STOPPED":
+                                finished = True
+                                result = "STOPPED"
+                                break
+                            else:
+                                # ERR -> auch abbrechen
+                                finished = True
+                                result = "STOPPED"
+                                break
+
+                        # --------------------------------------------------
+                        # Data messages
+                        # --------------------------------------------------
                         if line.startswith("DATA,"):
                             parts = line.split(",")
                             if len(parts) >= 5:
@@ -496,6 +561,19 @@ class CuffApp:
                                     bar_val = float(parts[4])
                                 except Exception:
                                     continue
+
+                                phase_norm = str(phase).strip().upper()
+
+                                # Zielzeit nur während Inflate messen
+                                if (
+                                    inflate_start_time is not None
+                                    and not target_reached
+                                    and phase_norm.startswith("INFLATE")
+                                ):
+                                    if bar_val >= target_bar:
+                                        elapsed_s = time.perf_counter() - inflate_start_time
+                                        target_reached = True
+                                        self.msg_queue.put(("target_time", f"{elapsed_s:.2f}"))
 
                                 with self.rows_lock:
                                     self.rows.append({
@@ -510,24 +588,11 @@ class CuffApp:
 
                                 self.msg_queue.put(("pressure", bar_val))
                                 self.msg_queue.put(("plot_update", None))
+                                continue
 
-                        else:
-                            if (
-                                line.startswith("PHASE")
-                                or line == "DONE"
-                                or line == "STOPPED"
-                                or line.startswith("ERR")
-                            ):
-                                self.msg_queue.put(("log", f"<< {line}"))
-
-                            if line == "DONE":
-                                finished = True
-                                result = "DONE"
-                                break
-                            elif line == "STOPPED":
-                                finished = True
-                                result = "STOPPED"
-                                break
+                        # Andere Zeilen nur ins Log
+                        if line:
+                            self.msg_queue.put(("log", f"<< {line}"))
 
                     if finished:
                         break
@@ -552,7 +617,6 @@ class CuffApp:
             self.msg_queue.put(("status", "ERROR"))
         finally:
             self.msg_queue.put(("worker_done", None))
-
     # ------------------------------------------------------------
     # Daten / Plot
     # ------------------------------------------------------------
@@ -608,6 +672,9 @@ class CuffApp:
 
                 elif kind == "plot_update":
                     self.update_live_plot()
+                
+                elif kind == "target_time":
+                    self.target_time_var.set(payload)
 
                 elif kind == "worker_done":
                     self.worker = None
