@@ -18,8 +18,8 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from PIL import Image, ImageTk
 
 
-BAR_MAX = 0.4
-V_AT_BAR_MAX = 3.4
+BAR_MAX = 0.5
+V_AT_BAR_MAX = 4.35 #3.4
 BAUDRATE = 115200
 BAR_TO_MMHG = 750.061683
 
@@ -71,10 +71,34 @@ class CuffApp:
     def __init__(self, root):
         self.root = root
         root.title("Manschetten Sequencer")
+        root.geometry("1300x750")
 
         style = ttk.Style()
-        style.configure("Bold.TLabel", font=("Arial", 10, "bold"))
-        style.configure("Bold.TLabelframe.Label", font=("Arial", 10, "bold"))
+        style.theme_use("clam")
+
+        style.configure(
+            "Bold.TLabel",
+            font=("Arial", 10, "bold")
+        )
+
+        style.configure(
+            "Bold.TLabelframe.Label",
+            font=("Arial", 10, "bold")
+        )
+
+        style.configure(
+            "Start.TButton",
+            background="#28a745",
+            foreground="white",
+            font=("Arial", 10, "bold")
+        )
+
+        style.configure(
+            "Stop.TButton",
+            background="#dc3545",
+            foreground="white",
+            font=("Arial", 10, "bold")
+        )
 
         self.ser = None
         self.worker = None
@@ -85,14 +109,101 @@ class CuffApp:
         self.rows = []
         self.rows_lock = threading.Lock()
 
-        self.use_mmhg = tk.BooleanVar(value=False)   # False = bar, True = mmHg
+        self.use_bar = tk.BooleanVar(value=False)   # True = bar, False = mmHg
         self.last_pressure_bar = 0.0
 
         root.columnconfigure(0, weight=1)
         root.rowconfigure(0, weight=1)
 
-        main = ttk.Frame(root, padding=10)
-        main.grid(sticky="nsew")
+        # =========================================================
+        # Scrollbarer Hauptbereich
+        # =========================================================
+
+        container = ttk.Frame(root)
+        container.grid(row=0, column=0, sticky="nsew")
+
+        container.columnconfigure(0, weight=1)
+        container.rowconfigure(0, weight=1)
+
+        canvas = tk.Canvas(
+            container,
+            highlightthickness=0
+        )
+
+        scrollbar = ttk.Scrollbar(
+            container,
+            orient="vertical",
+            command=canvas.yview
+        )
+
+        canvas.configure(
+            yscrollcommand=scrollbar.set
+        )
+
+        canvas.grid(
+            row=0,
+            column=0,
+            sticky="nsew"
+        )
+
+        scrollbar.grid(
+            row=0,
+            column=1,
+            sticky="ns"
+        )
+
+        # Hauptframe
+        main = ttk.Frame(
+            canvas,
+            padding=10
+        )
+
+        self.canvas_window = canvas.create_window(
+            (0, 0),
+            window=main,
+            anchor="nw"
+        )
+
+        self.canvas = canvas
+        self.main = main
+
+
+        # Scrollbereich automatisch aktualisieren
+        def update_scrollregion(event=None):
+            canvas.configure(
+                scrollregion=canvas.bbox("all")
+            )
+
+        main.bind(
+            "<Configure>",
+            update_scrollregion
+        )
+
+
+        # Breite an Fenster anpassen
+        def resize_canvas(event):
+            canvas.itemconfigure(
+                self.canvas_window,
+                width=event.width
+            )
+
+        canvas.bind(
+            "<Configure>",
+            resize_canvas
+        )
+
+
+        # Mausrad
+        def mousewheel(event):
+            canvas.yview_scroll(
+                int(-1 * (event.delta / 120)),
+                "units"
+            )
+
+        canvas.bind_all(
+            "<MouseWheel>",
+            mousewheel
+        )
         main.columnconfigure(4, weight=1)
         main.rowconfigure(5, weight=1)
 
@@ -119,8 +230,8 @@ class CuffApp:
 
         ttk.Checkbutton(
             topbar,
-            text="mmHg",
-            variable=self.use_mmhg,
+            text="bar",
+            variable=self.use_bar,
             command=self.toggle_unit
         ).pack(side="right", padx=(4, 8))
         
@@ -131,45 +242,206 @@ class CuffApp:
 
         # Pattern blocks ------------------------------------------
         self.patterns = []
+
         pattern_defaults = [
-            ("Protokoll A", True, 0.2, 0.0, 5, 5, 5),
-            ("Protokoll B", False, 0.2, 0.0, 10, 10, 5),
-            ("Protokoll C", False, 0.2, 0.0, 15, 15, 5),
+            ("Protokoll A", True,  300.0, 0.0, 15,  15,  2),
+            ("Protokoll B", False, 0.0,   0.0, 0,   120, 1),
+            ("Protokoll C", False, 300.0, 0.0, 300, 180, 1),
+            ("Protokoll D", False, 300.0, 0.0, 5,   5,   5),
+            ("Protokoll E", False, 300.0, 0.0, 10,  10,  5),
+            ("Protokoll F", False, 300.0, 0.0, 15,  15,  8),
         ]
 
         for idx, (name, enabled, p_in, p_out, t_in, t_out, reps) in enumerate(pattern_defaults):
-            frame = ttk.LabelFrame(main, text=name, padding=10, style="Bold.TLabelframe")
-            frame.grid(column=idx, row=1, padx=8, pady=14, sticky="n")
 
+            protocol_column = idx % 3
+            protocol_row = 1 + (idx // 3)
+
+            # ---------------------------------------------------------
+            # Checkbox + Protokollname als Titel
+            # ---------------------------------------------------------
             enabled_var = tk.BooleanVar(value=enabled)
-            ttk.Checkbutton(frame, variable=enabled_var).grid(column=0, row=0, sticky="w")
 
-            ttk.Label(frame, text="Inflate:").grid(column=0, row=1, sticky="w", pady=(8, 0))
+            title_frame = ttk.Frame(main)
+
+            ttk.Checkbutton(
+                title_frame,
+                variable=enabled_var
+            ).pack(side="left")
+
+            ttk.Label(
+                title_frame,
+                text=name,
+                style="Bold.TLabel"
+            ).pack(side="left", padx=(2, 0))
+
+            # ---------------------------------------------------------
+            # Protokoll-Frame
+            # ---------------------------------------------------------
+            frame = ttk.LabelFrame(
+                main,
+                labelwidget=title_frame,
+                padding=10
+            )
+
+            frame.grid(
+                column=protocol_column,
+                row=protocol_row,
+                padx=8,
+                pady=8,
+                sticky="n"
+            )
+
+            # ---------------------------------------------------------
+            # Inflate
+            # ---------------------------------------------------------
+            ttk.Label(
+                frame,
+                text="Inflate:"
+            ).grid(
+                column=0,
+                row=0,
+                sticky="w",
+                pady=(5, 0)
+            )
+
+            # Druck
             inflate_var = tk.DoubleVar(value=p_in)
-            ttk.Entry(frame, textvariable=inflate_var, width=10).grid(column=1, row=1, pady=(8, 0))
-            inflate_unit_label = ttk.Label(frame, text="[bar]")
-            inflate_unit_label.grid(column=2, row=1, sticky="w", pady=(8, 0))
 
-            ttk.Label(frame, text="Deflate:").grid(column=0, row=2, sticky="w")
-            deflate_var = tk.DoubleVar(value=p_out)
-            ttk.Entry(frame, textvariable=deflate_var, width=10).grid(column=1, row=2)
-            deflate_unit_label = ttk.Label(frame, text="[bar]")
-            deflate_unit_label.grid(column=2, row=2, sticky="w")
+            ttk.Entry(
+                frame,
+                textvariable=inflate_var,
+                width=7
+            ).grid(
+                column=1,
+                row=0,
+                padx=(5, 2),
+                pady=(5, 0)
+            )
 
-            ttk.Label(frame, text="Inflate:").grid(column=0, row=3, sticky="w", pady=(8, 0))
+            inflate_unit_label = ttk.Label(
+                frame,
+                text="[mmHg]"
+            )
+
+            inflate_unit_label.grid(
+                column=2,
+                row=0,
+                sticky="w",
+                pady=(5, 0)
+            )
+
+            # Zeit
             t_inflate_var = tk.DoubleVar(value=t_in)
-            ttk.Entry(frame, textvariable=t_inflate_var, width=10).grid(column=1, row=3, pady=(8, 0))
-            ttk.Label(frame, text="[s]").grid(column=2, row=3, sticky="w", pady=(8, 0))
 
-            ttk.Label(frame, text="Deflate:").grid(column=0, row=4, sticky="w")
+            ttk.Entry(
+                frame,
+                textvariable=t_inflate_var,
+                width=6
+            ).grid(
+                column=3,
+                row=0,
+                padx=(12, 2),
+                pady=(5, 0)
+            )
+
+            ttk.Label(
+                frame,
+                text="[s]"
+            ).grid(
+                column=4,
+                row=0,
+                sticky="w",
+                pady=(5, 0)
+            )
+
+            # ---------------------------------------------------------
+            # Deflate
+            # ---------------------------------------------------------
+            ttk.Label(
+                frame,
+                text="Deflate:"
+            ).grid(
+                column=0,
+                row=1,
+                sticky="w"
+            )
+
+            # Druck
+            deflate_var = tk.DoubleVar(value=p_out)
+
+            ttk.Entry(
+                frame,
+                textvariable=deflate_var,
+                width=7
+            ).grid(
+                column=1,
+                row=1,
+                padx=(5, 2)
+            )
+
+            deflate_unit_label = ttk.Label(
+                frame,
+                text="[mmHg]"
+            )
+
+            deflate_unit_label.grid(
+                column=2,
+                row=1,
+                sticky="w"
+            )
+
+            # Zeit
             t_deflate_var = tk.DoubleVar(value=t_out)
-            ttk.Entry(frame, textvariable=t_deflate_var, width=10).grid(column=1, row=4)
-            ttk.Label(frame, text="[s]").grid(column=2, row=4, sticky="w")
 
-            ttk.Label(frame, text="Reps:").grid(column=0, row=5, sticky="w", pady=(8, 0))
+            ttk.Entry(
+                frame,
+                textvariable=t_deflate_var,
+                width=6
+            ).grid(
+                column=3,
+                row=1,
+                padx=(12, 2)
+            )
+
+            ttk.Label(
+                frame,
+                text="[s]"
+            ).grid(
+                column=4,
+                row=1,
+                sticky="w"
+            )
+
+            # ---------------------------------------------------------
+            # Repetitions
+            # ---------------------------------------------------------
+            ttk.Label(
+                frame,
+                text="Reps:"
+            ).grid(
+                column=0,
+                row=2,
+                sticky="w",
+                pady=(8, 0)
+            )
+
             reps_var = tk.IntVar(value=reps)
-            ttk.Entry(frame, textvariable=reps_var, width=10).grid(column=1, row=5, pady=(8, 0))
 
+            ttk.Entry(
+                frame,
+                textvariable=reps_var,
+                width=7
+            ).grid(
+                column=1,
+                row=2,
+                padx=(5, 2),
+                pady=(8, 0)
+            )
+
+            # ---------------------------------------------------------
+            # Daten speichern
+            # ---------------------------------------------------------
             self.patterns.append({
                 "name": name,
                 "enabled": enabled_var,
@@ -182,51 +454,127 @@ class CuffApp:
                 "deflate_unit_label": deflate_unit_label,
             })
 
+
         # Bottom controls -----------------------------------------
         ctrl = ttk.Frame(main)
-        ctrl.grid(column=0, row=2, columnspan=5, sticky="w", pady=(6, 4))
 
-        ttk.Button(ctrl, text="Start", command=self.start).grid(column=0, row=0, padx=(0, 10))
-        ttk.Button(ctrl, text="Stop", command=self.stop).grid(column=1, row=0, padx=(0, 20))
+        ctrl.grid(
+            column=3,
+            row=2,
+            columnspan=2,
+            sticky="nw",
+            padx=(12, 0),
+            pady=(8, 0)
+        )
 
-        ttk.Label(ctrl, text="Filename:").grid(column=2, row=0, sticky="w")
+        ttk.Button(ctrl, text="Start", command=self.start,style="Start.TButton").grid(column=0, row=0, padx=(0, 10), pady=(0,10))
+        ttk.Button(ctrl, text="Stop", command=self.stop,style="Stop.TButton").grid(column=1, row=0, padx=(0, 10), pady=(0,10))
+
+        ttk.Label(ctrl, text="Filename:",style="Bold.TLabel").grid(column=0, row=1, sticky="w", pady=(0,10))
         self.filename_var = tk.StringVar(value="test")
-        ttk.Entry(ctrl, textvariable=self.filename_var, width=16).grid(column=3, row=0, padx=6)
-        ttk.Label(ctrl, text=".csv").grid(column=4, row=0, sticky="w")
+        ttk.Entry(ctrl, textvariable=self.filename_var, width=16).grid(column=1, row=1, padx=(0,5))
+        ttk.Label(ctrl, text=".csv").grid(column=2, row=1, sticky="w")
 
         self.status_var = tk.StringVar(value="IDLE")
-        ttk.Label(main, text="Status:", style="Bold.TLabel").grid(column=0, row=3, sticky="w")
-        ttk.Label(main, textvariable=self.status_var).grid(column=0, row=3, sticky="e")
 
-        self.current_pressure_label = ttk.Label(main, text="Current pressure [bar]:", style="Bold.TLabel")
-        self.current_pressure_label.grid(column=3, row=3, sticky="w", padx=(10, 6))
+        ttk.Label(ctrl,text="Status:").grid(
+            column=0,
+            row=2,
+            sticky="w",
+            padx=(0, 5),
+            pady=(0,10)
+        )
 
-        self.pressure_var = tk.StringVar(value="0.000 bar")
-        self.pressure_entry = ttk.Entry(main, textvariable=self.pressure_var, width=14, state="readonly")
-        self.pressure_entry.grid(column=3, row=3, sticky="e")
+        ttk.Label(
+            ctrl,
+            textvariable=self.status_var,
+            style="Bold.TLabel"
+        ).grid(
+            column=1,
+            row=2,
+            sticky="w",
+            padx=(0, 5),
+            pady=(0,10)
+        )
+
+        self.current_pressure_label = ttk.Label(
+            ctrl,
+            text="Current pressure [mmHg]:",
+            #style="Bold.TLabel"
+        ).grid(
+            column=0,
+            row=3,
+            sticky="e",
+            padx=(0, 5),
+            pady=(0,10)
+        )
+
+        self.pressure_var = tk.StringVar(value="0.000 mmHg")
+
+        self.pressure_entry = ttk.Label(
+            ctrl,
+            textvariable=self.pressure_var,
+            style="Bold.TLabel"
+        ).grid(
+            column=1,
+            row=3,
+            sticky="w",
+            padx=(0, 5),
+            pady=(0,10)
+        )
+
         ## Zeit
         self.target_time_var = tk.StringVar(value="--")
 
-        time_frame = ttk.Frame(main)
-        time_frame.grid(column=4, row=3, sticky="w", padx=(10, 0))
+        ttk.Label(
+            ctrl,
+            text="Target time:",
+            #style="Bold.TLabel"
+        ).grid(
+            column=0,
+            row=4,
+            sticky="e",
+            padx=(0, 5),
+            pady=(0,0)
+        )
 
-        ttk.Label(time_frame, text="Target time:", style="Bold.TLabel").pack(side="left", padx=(0, 6))
-        ttk.Entry(time_frame, textvariable=self.target_time_var, width=10, state="readonly").pack(side="left")
-        ttk.Label(time_frame, text="[s]").pack(side="left", padx=(4, 0))
+        ttk.Label(
+            ctrl,
+            textvariable=self.target_time_var,
+            style="Bold.TLabel"
+        ).grid(
+            column=1,
+            row=4,
+            sticky="w",
+            padx=(0,0),
+            pady=(0,0)
+        )
+
+        ttk.Label(
+            ctrl,
+            text="[s]"
+        ).grid(
+            column=2,
+            row=4,
+            sticky="w",
+            padx=(0, 5),
+            pady=(0,0)
+        )
 
         # Log rechts neben den Pattern-Blöcken
-        self.log = tk.Text(main, height=12, width=40)
-        self.log.grid(column=3, row=1, rowspan=3, padx=(12, 0), pady=14, sticky="n")
+        self.log = tk.Text(main, height=5, width=40)
+        self.log.grid(column=3, row=1, rowspan=1, padx=(12, 0), pady=14, sticky="ns")
 
         # Live plot -----------------------------------------------
-        plot_frame = ttk.LabelFrame(main, text="Live Plot", padding=8, style="Bold.TLabelframe")
-        plot_frame.grid(column=0, row=5, columnspan=5, pady=(10, 0), sticky="nsew")
+        plot_frame = ttk.LabelFrame(main, text="Live Plot", padding=5, style="Bold.TLabelframe")
+        plot_frame.grid(column=0, row=5, columnspan=4, pady=(0, 10), sticky="nsew")
 
-        self.live_fig = Figure(figsize=(9, 3.5), dpi=100)
+        self.live_fig = Figure(figsize=(9, 2.5), dpi=100)
         self.live_ax = self.live_fig.add_subplot(111)
         self.live_ax.set_xlabel("Zeit [s]")
-        self.live_ax.set_ylabel("Druck [bar]")
+        self.live_ax.set_ylabel("Druck [mmHg]")
         self.live_ax.grid(True)
+        self.live_fig.subplots_adjust(bottom=0.20)
         self.live_line, = self.live_ax.plot([], [])
 
         self.live_canvas = FigureCanvasTkAgg(self.live_fig, master=plot_frame)
@@ -238,7 +586,7 @@ class CuffApp:
 
         # Logos rechts --------------------------------------------
         logo_frame = ttk.Frame(main)
-        logo_frame.grid(column=5, row=5, rowspan=2, sticky="n", padx=(10, 0))
+        logo_frame.grid(column=4, row=5, rowspan=2, sticky="w", padx=(0, 0),pady=(15, 0))
 
         def load_logo(path, size):
             img = Image.open(path).convert("RGBA")
@@ -257,25 +605,37 @@ class CuffApp:
     # Hilfsfunktionen Einheit
     # ------------------------------------------------------------
     def current_unit_text(self):
-        return "mmHg" if self.use_mmhg.get() else "bar"
+        return "bar" if self.use_bar.get() else "mmHg"
+
 
     def display_value_to_bar(self, value):
-        return mmhg_to_bar(value) if self.use_mmhg.get() else value
+        if self.use_bar.get():
+            return value
+        return mmhg_to_bar(value)
+
 
     def bar_to_display_value(self, value_bar):
-        return bar_to_mmhg(value_bar) if self.use_mmhg.get() else value_bar
+        if self.use_bar.get():
+            return value_bar
+        return bar_to_mmhg(value_bar)
+
 
     def format_pressure_text(self, value_bar):
         display_value = self.bar_to_display_value(value_bar)
-        if self.use_mmhg.get():
-            return f"{display_value:.1f} mmHg"
-        return f"{display_value:.3f} bar"
+
+        if self.use_bar.get():
+            return f"{display_value:.3f} bar"
+
+        return f"{display_value:.1f} mmHg"
+
 
     def update_pressure_display(self):
-        self.pressure_var.set(self.format_pressure_text(self.last_pressure_bar))
+        self.pressure_var.set(
+            self.format_pressure_text(self.last_pressure_bar)
+        )
 
     def toggle_unit(self):
-        to_mmhg = self.use_mmhg.get()
+        to_bar = self.use_bar.get()
 
         for p in self.patterns:
             try:
@@ -284,21 +644,36 @@ class CuffApp:
             except Exception:
                 continue
 
-            if to_mmhg:
-                p["inflate_bar"].set(round(bar_to_mmhg(inflate_val), 1))
-                p["deflate_bar"].set(round(bar_to_mmhg(deflate_val), 1))
-                p["inflate_unit_label"].config(text="[mmHg]")
-                p["deflate_unit_label"].config(text="[mmHg]")
-            else:
-                p["inflate_bar"].set(round(mmhg_to_bar(inflate_val), 3))
-                p["deflate_bar"].set(round(mmhg_to_bar(deflate_val), 3))
+            if to_bar:
+                # mmHg -> bar
+                p["inflate_bar"].set(
+                    round(mmhg_to_bar(inflate_val), 3)
+                )
+                p["deflate_bar"].set(
+                    round(mmhg_to_bar(deflate_val), 3)
+                )
+
                 p["inflate_unit_label"].config(text="[bar]")
                 p["deflate_unit_label"].config(text="[bar]")
 
-        self.current_pressure_label.config(text=f"Current pressure [{self.current_unit_text()}]:")
+            else:
+                # bar -> mmHg
+                p["inflate_bar"].set(
+                    round(bar_to_mmhg(inflate_val), 1)
+                )
+                p["deflate_bar"].set(
+                    round(bar_to_mmhg(deflate_val), 1)
+                )
+
+                p["inflate_unit_label"].config(text="[mmHg]")
+                p["deflate_unit_label"].config(text="[mmHg]")
+
+        self.current_pressure_label.config(
+            text=f"Current pressure [{self.current_unit_text()}]:"
+        )
+
         self.update_pressure_display()
         self.update_live_plot()
-
     # ------------------------------------------------------------
     # UI / Serial
     # ------------------------------------------------------------
@@ -499,6 +874,7 @@ class CuffApp:
                 inflate_start_time = None
                 target_reached = False
                 last_phase = None
+                current_target_time = None
 
                 while not self.stop_event.is_set():
                     lines = self.read_serial_lines()
@@ -573,7 +949,14 @@ class CuffApp:
                                     if bar_val >= target_bar:
                                         elapsed_s = time.perf_counter() - inflate_start_time
                                         target_reached = True
-                                        self.msg_queue.put(("target_time", f"{elapsed_s:.2f}"))
+
+                                        # Target-Zeit speichern
+                                        current_target_time = elapsed_s
+
+                                        # GUI aktualisieren
+                                        self.msg_queue.put(
+                                            ("target_time", f"{elapsed_s:.2f}")
+                                        )
 
                                 with self.rows_lock:
                                     self.rows.append({
@@ -584,6 +967,12 @@ class CuffApp:
                                         "phase": phase,
                                         "adc_raw": adc_raw,
                                         "bar": bar_val,
+                                        "mmHg": round(bar_to_mmhg(bar_val), 1),
+                                        "target_time_s": (
+                                            round(current_target_time, 2)
+                                            if current_target_time is not None
+                                            else ""
+                                        ),
                                     })
 
                                 self.msg_queue.put(("pressure", bar_val))
@@ -625,7 +1014,7 @@ class CuffApp:
             with open(csv_path, "a", newline="", encoding="utf-8") as f:
                 writer = csv.DictWriter(
                     f,
-                    fieldnames=["date", "time", "pattern", "t_ms", "phase", "adc_raw", "bar"]
+                    fieldnames=["date", "time", "pattern", "t_ms", "phase", "adc_raw", "bar","mmHg","target_time_s"]
                 )
                 if not file_exists:
                     writer.writeheader()
