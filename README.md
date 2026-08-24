@@ -1,4 +1,4 @@
-<img width="668" height="450" alt="image" src="https://github.com/user-attachments/assets/329d0eac-6a41-4fb5-8104-fda401c3d2a1" />
+<img width="1620" height="972" alt="image" src="https://github.com/user-attachments/assets/f25ed866-89dd-4630-97af-cd0aadb6f3cd" />
 
 
 # Pneumatic Cuff Sequencer
